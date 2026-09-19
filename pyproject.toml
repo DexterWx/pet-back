@@ -1,0 +1,17 @@
+[project]
+name = "pet-back"
+version = "0.1.0"
+description = "宠物商城后端（Flask + SQLite），服务 pet-mini 小程序端，预留管理端命名空间"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.0",
+    "flask-sqlalchemy>=3.1",
+    "flask-cors>=4.0",
+    "gunicorn>=22.0",
+    "python-dotenv>=1.0",
+    "requests>=2.32",
+]
+
+[tool.uv]
+package = false
