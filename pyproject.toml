@@ -11,6 +11,8 @@ dependencies = [
     "gunicorn>=22.0",
     "python-dotenv>=1.0",
     "requests>=2.32",
+    "wechatpayv3>=2.0.4",
+    "oss2>=2.19.1",
 ]
 
 [tool.uv]

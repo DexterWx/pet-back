@@ -12,14 +12,33 @@ class Order(db.Model):
     __tablename__ = "orders"
 
     id = db.Column(db.String(32), primary_key=True)  # o + uuid hex
-    order_no = db.Column(db.String(32), unique=True, nullable=False, index=True)  # NO+毫秒时间戳
+    order_no = db.Column(db.String(32), unique=True, nullable=False, index=True)  # NO+毫秒+4位随机（core.constants.gen_order_no）
     user_id = db.Column(db.String(32), db.ForeignKey("users.id"), nullable=False, index=True)
-    total_fen = db.Column(db.Integer, nullable=False, default=0)
+    total_fen = db.Column(db.Integer, nullable=False, default=0)  # 应付总额 = 商品金额 + 运费
+    # 金额快照：total_fen = goods_total_fen + freight_fen；下单时按当时运费规则算定并固化，
+    # 之后改运费配置不影响历史订单（与商品单价/标题快照同理）。
+    goods_total_fen = db.Column(db.Integer, nullable=False, default=0)  # 商品金额合计（分，不含运费）
+    freight_fen = db.Column(db.Integer, nullable=False, default=0)  # 运费（分；自提或达包邮门槛为 0）
     status = db.Column(db.String(32), nullable=False, index=True)  # OrderStatus
+
+    # 配送方式：EXPRESS 快递 / SELF_PICKUP 自提（DeliveryType）
+    delivery_type = db.Column(db.String(16), nullable=False, default="EXPRESS")
+    # 收货/取货信息：下单时从地址簿快照写入，后续地址修改不影响历史订单（自提可无详细地址）
+    receiver_name = db.Column(db.String(64), nullable=False, default="")
+    receiver_phone = db.Column(db.String(32), nullable=False, default="")
+    receiver_address = db.Column(db.String(255), nullable=False, default="")
+    # 物流信息：由管理端录入。快递填公司+单号；自提自定义一个提货单号（carrier 可空）
+    carrier = db.Column(db.String(64), nullable=False, default="")
+    ship_no = db.Column(db.String(64), nullable=False, default="")
+
     created_at = db.Column(db.BigInteger, nullable=False, default=0)
+    paid_at = db.Column(db.BigInteger, nullable=False, default=0)  # 支付成功时间（PENDING_PAY -> PAID_UNSHIPPED）
     shipped_at = db.Column(db.BigInteger, nullable=False, default=0)
+    completed_at = db.Column(db.BigInteger, nullable=False, default=0)  # 交易完成时间（SHIPPED -> COMPLETED）
+    complete_source = db.Column(db.String(8), nullable=False, default="")  # 完成方式：USER 用户确认 / AUTO 发货满 N 天自动 / '' 未完成
     refund_requested_at = db.Column(db.BigInteger, nullable=False, default=0)
     cancelled_at = db.Column(db.BigInteger, nullable=False, default=0)
+    refunded_at = db.Column(db.BigInteger, nullable=False, default=0)  # 商家强制退款完成（REFUNDED）时间
 
     items = db.relationship(
         "OrderItem", backref="order", cascade="all, delete-orphan", order_by="OrderItem.id"
@@ -38,3 +57,17 @@ class OrderItem(db.Model):
     image = db.Column(db.String(512), nullable=False, default="")
     price_fen = db.Column(db.Integer, nullable=False, default=0)
     qty = db.Column(db.Integer, nullable=False, default=1)
+
+
+class OrderConfig(db.Model):
+    """交易配置（全局一套，单行 id=1）：目前只有发货后自动确认收货/退款窗口天数。
+
+    与 shipping_configs 同模式：商家可在管理后台调整，默认 7 天；自提与快递一致。
+    无行时回退到环境变量 ORDER_AUTO_COMPLETE_DAYS（再缺省 7）。
+    """
+
+    __tablename__ = "order_configs"
+
+    id = db.Column(db.Integer, primary_key=True)  # 固定 1
+    auto_complete_days = db.Column(db.Integer, nullable=False, default=7)  # 发货后自动确认收货天数（=退款窗口）
+    updated_at = db.Column(db.BigInteger, nullable=False, default=0)

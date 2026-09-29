@@ -1,7 +1,7 @@
 """购物车接口（全部需登录）。
 
-行为对齐 Mock：add/update 校验库存；update 传 qty<=0 即删除该行；
-所有写操作返回完整购物车行列表（实时 join 商品价格/库存）。
+无库存概念（下单现做）：add/update 仅校验单笔数量上限；update 传 qty<=0 即删除该行；
+所有写操作返回完整购物车行列表（实时 join 商品价格）。
 """
 from flask import Blueprint, g, request
 
@@ -9,6 +9,7 @@ from ....core.response import ApiError, ok
 from ....core.security import login_required
 from ....models import CartLine, Product, db
 from ....services import serializers
+from ....services.order_service import MAX_QTY_PER_ITEM
 
 bp = Blueprint("cart", __name__, url_prefix="/cart")
 
@@ -21,12 +22,15 @@ def _get_product_or_404(product_id: str) -> Product:
 
 
 def _lines_payload(user_id: str) -> list[dict]:
-    """当前用户购物车行（join 商品；商品已下架/删除的行自动跳过）。"""
+    """当前用户购物车行（join 商品；商品已下架/删除的行自动跳过）。
+
+    下架行仅隐藏不删数据，重新上架即恢复（与删除区分）。
+    """
     lines = CartLine.query.filter_by(user_id=user_id).order_by(CartLine.id.asc()).all()
     payload = []
     for line in lines:
         product = db.session.get(Product, line.product_id)
-        if product is None:
+        if product is None or not product.on_sale:
             continue
         payload.append(serializers.cart_line(line, product))
     return payload
@@ -52,14 +56,16 @@ def get_cart():
 def add_to_cart():
     body = request.get_json(silent=True) or {}
     product = _get_product_or_404(str(body.get("productId", "")))
+    if not product.on_sale:
+        raise ApiError(400, "商品已下架")
     qty = _int_or_none(body.get("qty", 1)) or 1
     if qty <= 0:
         raise ApiError(400, "数量格式不正确")
 
     line = CartLine.query.filter_by(user_id=g.current_user.id, product_id=product.id).first()
     target = (line.qty if line else 0) + qty
-    if target > product.stock:
-        raise ApiError(400, "库存不足")
+    if target > MAX_QTY_PER_ITEM:
+        raise ApiError(400, f"单笔最多 {MAX_QTY_PER_ITEM} 件")
     if line:
         line.qty = target
     else:
@@ -84,8 +90,8 @@ def update_cart():
             db.session.commit()
             return ok(_lines_payload(g.current_user.id))
         product = _get_product_or_404(product_id)
-        if qty > product.stock:
-            raise ApiError(400, "库存不足")
+        if qty > MAX_QTY_PER_ITEM:
+            raise ApiError(400, f"单笔最多 {MAX_QTY_PER_ITEM} 件")
         line.qty = qty
 
     checked = body.get("checked")

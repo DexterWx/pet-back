@@ -1,9 +1,27 @@
-"""管理端接口（预留命名空间 /api/v1/admin）。
+"""管理端接口（命名空间 /api/v1/admin）。
 
-本期不实现任何接口。未来 pet-web 管理端在此扩展：
-- 认证方式将与 client 端分离（如管理员账号 + 独立 Token）
-- 业务逻辑复用 app/services 层（如 order_service.cancel_order 即商家取消订单）
+与小程序端完全隔离：
+- 认证：账号密码登录，token 存 admin_tokens 表，鉴权走 core/security.admin_required；
+- 业务：复用 app/services 层（订单发货/取消/强制退款等），不复制规则。
 """
 from flask import Blueprint
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/v1/admin")
+
+from . import aftersale, audit, auth, banner, category, dashboard, export, order, order_config, product, recharge_tier, shipping, upload, user, admin_account  # noqa: E402
+
+admin_bp.register_blueprint(auth.bp)
+admin_bp.register_blueprint(order.bp)
+admin_bp.register_blueprint(order_config.bp)
+admin_bp.register_blueprint(aftersale.bp)
+admin_bp.register_blueprint(upload.bp)
+admin_bp.register_blueprint(product.bp)
+admin_bp.register_blueprint(category.bp)
+admin_bp.register_blueprint(user.bp)
+admin_bp.register_blueprint(admin_account.bp)
+admin_bp.register_blueprint(recharge_tier.bp)
+admin_bp.register_blueprint(shipping.bp)
+admin_bp.register_blueprint(banner.bp)
+admin_bp.register_blueprint(dashboard.bp)
+admin_bp.register_blueprint(export.bp)
+admin_bp.register_blueprint(audit.bp)
