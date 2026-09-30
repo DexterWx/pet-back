@@ -11,6 +11,14 @@ from . import db
 class Order(db.Model):
     __tablename__ = "orders"
 
+    # 复合索引：对应当前三类高频查询（单列索引由字段 index=True 继续生成，冗余但无害，写入量极小）。
+    # 存量库不会由 create_all 自动补建，已登记在 app/__init__.py:_auto_migrate() 里幂等创建。
+    __table_args__ = (
+        db.Index("ix_orders_user_status_created", "user_id", "status", "created_at"),  # 小程序订单列表：用户+状态筛选、时间倒序
+        db.Index("ix_orders_status_created", "status", "created_at"),  # 管理端订单列表 / 售后 tab
+        db.Index("ix_orders_status_paid", "status", "paid_at"),  # 仪表盘：按已支付状态 + 支付时间区间聚合
+    )
+
     id = db.Column(db.String(32), primary_key=True)  # o + uuid hex
     order_no = db.Column(db.String(32), unique=True, nullable=False, index=True)  # NO+毫秒+4位随机（core.constants.gen_order_no）
     user_id = db.Column(db.String(32), db.ForeignKey("users.id"), nullable=False, index=True)

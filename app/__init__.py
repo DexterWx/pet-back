@@ -123,6 +123,19 @@ def _auto_migrate() -> None:
             db.session.execute(text(f"ALTER TABLE {table} DROP COLUMN {column}"))
             changed = True
 
+    # 复合索引（查询性能）：create_all 只会给「新建的表」建索引，存量表必须在这里幂等补建。
+    # 定义同时写在各模型的 __table_args__ 里（保证新建库一次到位），两边名字要一致。
+    add_indexes = [
+        "CREATE INDEX IF NOT EXISTS ix_orders_user_status_created ON orders (user_id, status, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_orders_status_created ON orders (status, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_orders_status_paid ON orders (status, paid_at)",
+        "CREATE INDEX IF NOT EXISTS ix_after_sales_status_created ON after_sales (status, created_at)",
+    ]
+    if db.engine.dialect.name == "sqlite":  # IF NOT EXISTS 是 SQLite/PG 语法；换库后这份清单改走 Alembic
+        for ddl in add_indexes:
+            db.session.execute(text(ddl))
+            changed = True
+
     # 一次性数据修正：首次引入充值 status 列时，旧流水均是在旧逻辑下“已入账”的，
     # 统一标为 SUCCESS 并以创建时间作为到账时间，避免被误认为待支付。
     if ("recharge_records", "status") in added_columns:

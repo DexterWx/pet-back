@@ -10,6 +10,11 @@ from . import db
 class AfterSale(db.Model):
     __tablename__ = "after_sales"
 
+    # 待处理售后列表：按 status 筛选 + created_at 排序（存量库由 _auto_migrate() 补建）
+    __table_args__ = (
+        db.Index("ix_after_sales_status_created", "status", "created_at"),
+    )
+
     id = db.Column(db.String(32), primary_key=True)  # as + uuid hex
     order_id = db.Column(db.String(32), db.ForeignKey("orders.id"), nullable=False, index=True)
     user_id = db.Column(db.String(32), db.ForeignKey("users.id"), nullable=False, index=True)

@@ -3,8 +3,11 @@
 
 用法（在 pet-back 目录下）：
     uv run python scripts/backup_db.py                  # 备份 + 上传 + 清理
-    uv run python scripts/backup_db.py --no-upload      # 只落本地（先验证链路时用）
-    uv run python scripts/backup_db.py --keep-local 7 --keep-oss 30
+    uv run python scripts/backup_db.py --no-upload      # 只落本地（不删，供排查用）
+    uv run python scripts/backup_db.py --keep-local 3 --keep-oss 7   # 想多留几份时手动指定
+
+默认策略：**本地不留副本，OSS 只留最新 1 份**（Bucket 按量计费，不堆历史）。
+上传失败时**不删本地文件**，宁可多留一份也别把备份弄丢。
 
 为什么这么设计：
 - 用 sqlite3 的 backup() 做在线拷贝：**不要 cp 正在写入的库**，那样可能拿到不完整的页。
@@ -115,7 +118,7 @@ def upload(bucket_name: str, gz: Path) -> str:
 
 def prune(backup_dir: Path, bucket_name: str, key: str, keep_local: int, keep_oss: int) -> None:
     locals_ = sorted(backup_dir.glob("petstore-*.db.gz"), key=lambda p: p.name, reverse=True)
-    for old in locals_[keep_local:]:
+    for old in locals_[max(keep_local, 0):]:
         old.unlink()
         print(f"清理本地旧备份：{old.name}")
 
@@ -137,8 +140,8 @@ def prune(backup_dir: Path, bucket_name: str, key: str, keep_local: int, keep_os
 def main() -> int:
     ap = argparse.ArgumentParser(description="SQLite 备份并上传 OSS")
     ap.add_argument("--no-upload", action="store_true", help="只备份到本地，不上传 OSS")
-    ap.add_argument("--keep-local", type=int, default=7, help="本地保留份数（默认 7）")
-    ap.add_argument("--keep-oss", type=int, default=30, help="OSS 保留份数（默认 30）")
+    ap.add_argument("--keep-local", type=int, default=0, help="本地保留份数（默认 0：上传成功就不留）")
+    ap.add_argument("--keep-oss", type=int, default=1, help="OSS 保留份数（默认 1：只留最新）")
     args = ap.parse_args()
 
     backup_dir = Path(_flag("BACKUP_DIR") or BASE_DIR / "instance" / "backups")
@@ -147,16 +150,20 @@ def main() -> int:
     gz = make_local_copy(backup_dir)
 
     if not upload_enabled:
-        print("跳过上传（--no-upload 或 BACKUP_UPLOAD=0；或 OSS 未配置）")
-        prune(backup_dir, "", "", args.keep_local, 0)
+        print("跳过上传（--no-upload 或 BACKUP_UPLOAD=0）：本地副本保留不删")
+        prune(backup_dir, "", "", max(args.keep_local, 1), 0)
         return 0
     if not _is_oss_configured():
-        print("OSS 未配置完整（OSS_ENDPOINT/BUCKET/ACCESS_KEY_*），只保留本地备份")
-        prune(backup_dir, "", "", args.keep_local, 0)
+        print("OSS 未配置完整（OSS_ENDPOINT/BUCKET/ACCESS_KEY_*）：本地副本保留不删")
+        prune(backup_dir, "", "", max(args.keep_local, 1), 0)
         return 0
 
     bucket_name, _ = build_bucket()
-    key = upload(bucket_name, gz)
+    try:
+        key = upload(bucket_name, gz)
+    except Exception as e:  # noqa: BLE001 上传失败绝不动本地副本
+        print(f"❌ 上传失败，本地副本已保留：{gz}  （{type(e).__name__}: {e}）")
+        return 1
     prune(backup_dir, bucket_name, key, args.keep_local, args.keep_oss)
     print("备份流程全部完成")
     return 0
