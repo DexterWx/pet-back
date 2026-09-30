@@ -76,6 +76,13 @@ class Config:
     WXPAY_CERT_SERIAL_NO = os.getenv("WXPAY_CERT_SERIAL_NO", "").strip()
     WXPAY_PRIVATE_KEY_PATH = os.getenv("WXPAY_PRIVATE_KEY_PATH", "").strip()  # apiclient_key.pem
     WXPAY_NOTIFY_URL = os.getenv("WXPAY_NOTIFY_URL", "").strip()
+    # 退款结果回调地址：微信要求发起退款时单独传 notify_url，不传则不会推送退款回调。
+    # 留空时由上面的支付回调地址派生（.../payments/notify -> .../payments/refunds/notify）。
+    WXPAY_REFUND_NOTIFY_URL = os.getenv("WXPAY_REFUND_NOTIFY_URL", "").strip()
+    if not WXPAY_REFUND_NOTIFY_URL and WXPAY_NOTIFY_URL.endswith("/payments/notify"):
+        WXPAY_REFUND_NOTIFY_URL = (
+            WXPAY_NOTIFY_URL[: -len("/payments/notify")] + "/payments/refunds/notify"
+        )
     WXPAY_CERT_DIR = os.getenv("WXPAY_CERT_DIR", "").strip()  # 平台证书目录（传统模式，留空则自动下载到 instance/wxcert）
     # 微信支付公钥模式（2024+ 新商户可选，填了则优先于 cert_dir）
     WXPAY_PUBLIC_KEY_PATH = os.getenv("WXPAY_PUBLIC_KEY_PATH", "").strip()

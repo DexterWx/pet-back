@@ -17,3 +17,9 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+# 包索引：阿里云镜像（ECS 内网可达，实测默认 pypi.org 时 uv sync 耗时 6m58s）
+# default = true 表示取代默认的 https://pypi.org/simple
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

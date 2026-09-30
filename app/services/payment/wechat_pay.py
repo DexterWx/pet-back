@@ -111,6 +111,8 @@ class WechatPayProvider(PaymentProvider):
             amount={"refund": after_sale.refund_fen, "total": payment.amount_fen, "currency": "CNY"},
             transaction_id=payment.transaction_id,
             reason=(after_sale.reason or after_sale.admin_note or "退款")[:80],
+            # 不传 notify_url 微信就不会推退款回调，/payments/refunds/notify 会变成死路径（REFUNDING 只能靠后台查单补偿）
+            notify_url=current_app.config.get("WXPAY_REFUND_NOTIFY_URL") or None,
         )
         data = json.loads(text) if text else {}
         if code not in (200, 204) or not data.get("refund_id"):

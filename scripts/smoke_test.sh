@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # pet-back 冒烟测试（阶段F：管理端 CRUD + 客户端联动 + 订单/售后全链路）
 # 自举测试数据：管理端建分类/商品 -> 跑客户端下单支付售后 -> 测上下架/删除/账号管理。
 # 说明：分类/商品不再灌种子（改由管理端创建），故本脚本自建自清理，可重复运行。
@@ -10,12 +10,26 @@ CLIENT="http://$HOST/api/v1/client"
 ADMIN="http://$HOST/api/v1/admin"
 PASS=0; FAIL=0
 
+# Flask 的 jsonify 默认 ensure_ascii=True，中文会被转义成 \uXXXX；断言前统一反转义回 UTF-8 再比对。
+# 非 JSON 响应（如 CSV 导出）原样返回。
+norm() {
+  python3 -c "
+import json, sys
+raw = sys.stdin.read()
+try:
+    sys.stdout.write(json.dumps(json.loads(raw), ensure_ascii=False, separators=(',', ':')))
+except Exception:
+    sys.stdout.write(raw)
+"
+}
 check() {
-  if echo "$3" | grep -q "$2"; then PASS=$((PASS+1)); echo "  ✓ $1"
-  else FAIL=$((FAIL+1)); echo "  ✗ $1 | 期望含 [$2] 实际: $3"; fi
+  B=$(printf '%s' "$3" | norm)
+  if echo "$B" | grep -q "$2"; then PASS=$((PASS+1)); echo "  ✓ $1"
+  else FAIL=$((FAIL+1)); echo "  ✗ $1 | 期望含 [$2] 实际: $B"; fi
 }
 checkne() {  # 断言不包含
-  if echo "$3" | grep -q "$2"; then FAIL=$((FAIL+1)); echo "  ✗ $1 | 不应含 [$2]"
+  B=$(printf '%s' "$3" | norm)
+  if echo "$B" | grep -q "$2"; then FAIL=$((FAIL+1)); echo "  ✗ $1 | 不应含 [$2]"
   else PASS=$((PASS+1)); echo "  ✓ $1"; fi
 }
 jf() { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)"; }
